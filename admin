@@ -1,0 +1,962 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>社區管委會管理後台</title>
+<script src="https://static.line-scdn.net/liff/edge/versions/2.22.3/sdk.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700;900&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+  --jade: #1e40af; --jade-light: #3b82f6; --jade-pale: #eff6ff;
+  --ink: #0f1f1a; --mist: #f1f5f9; --border: #cbd5e1; --text2: #475569;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+body { font-family: 'Noto Sans TC', sans-serif; background: var(--mist); color: var(--ink); font-size: 16px; }
+
+.header {
+  background: var(--jade); color: white; padding: 14px 18px;
+  display: flex; align-items: center; justify-content: space-between;
+  position: sticky; top: 0; z-index: 50;
+}
+.header-left { display: flex; align-items: center; gap: 10px; }
+.header-title { font-size: 18px; font-weight: 900; }
+.header-sub { font-size: 12px; opacity: 0.75; margin-top: 1px; }
+.btn-refresh {
+  background: rgba(255,255,255,0.15); border: 1px solid rgba(255,255,255,0.3);
+  color: white; padding: 7px 12px; border-radius: 20px; font-size: 13px; font-family: inherit; cursor: pointer;
+}
+.tabs {
+  background: white; border-bottom: 1px solid var(--border);
+  display: flex; overflow-x: auto; scrollbar-width: none;
+}
+.tabs::-webkit-scrollbar { display: none; }
+.tab {
+  flex: 1; justify-content: center; /* 【新增】讓四個頁籤平均分配總寬度，並讓文字置中 */
+  padding: 12px 4px; /* 【修改】將左右的留白從 16px 縮減到 4px */
+  font-size: 16px; font-weight: 600; color: var(--text2);
+  cursor: pointer; white-space: nowrap;
+  border-bottom: 2.5px solid transparent;
+  background: none; border-top: none; border-left: none; border-right: none;
+  font-family: inherit; display: flex; align-items: center; gap: 4px; /* 【修改】將文字跟數字圈圈的間距微調為 4px */
+}
+.tab.active { color: var(--jade); border-bottom-color: var(--jade); }
+.tab-count { font-size: 11px; font-weight: 700; padding: 1px 7px; border-radius: 10px; min-width: 20px; text-align: center; }
+.count-pending { background: #fee2e2; color: #991b1b; }
+.count-process { background: #dbeafe; color: #1e40af; }
+.count-done    { background: var(--jade-pale); color: var(--jade); }
+.count-all     { background: #f1f5f9; color: #475569; }
+
+.main { padding: 14px; max-width: 520px; margin: 0 auto; }
+.report-list { display: flex; flex-direction: column; gap: 10px; }
+.report-card {
+  background: white; border-radius: 14px; border: 1.5px solid var(--border);
+  cursor: pointer; overflow: hidden;
+}
+.card-top { padding: 14px 16px 10px; }
+.card-row1 { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 6px; }
+.card-title { font-size: 18px; font-weight: 700; }
+.status-badge { font-size: 11px; font-weight: 700; padding: 3px 10px; border-radius: 20px; flex-shrink: 0; margin-left: 8px; }
+.badge-pending { background: #fee2e2; color: #991b1b; }
+.badge-process { background: #dbeafe; color: #1e40af; }
+.badge-done    { background: var(--jade-pale); color: var(--jade); }
+.card-meta { font-size: 15px; color: var(--text2); display: flex; flex-wrap: wrap; gap: 8px; }
+.card-desc { font-size: 15px; color: var(--text2); margin-top: 6px; line-height: 1.5; }
+.card-id { font-family: 'DM Mono', monospace; font-size: 10px; color: #334155; margin-top: 4px; }
+
+.panel-overlay {
+  position: fixed; inset: 0; background: rgba(0,0,0,0.5);
+  z-index: 100; opacity: 0; pointer-events: none; transition: opacity 0.3s;
+}
+.panel-overlay.show { opacity: 1; pointer-events: all; }
+.panel {
+  position: fixed; bottom: 0; left: 0; right: 0; background: white;
+  border-radius: 20px 20px 0 0; max-height: 92vh; overflow-y: auto;
+  transform: translateY(100%); transition: transform 0.35s cubic-bezier(0.32,0.72,0,1);
+  z-index: 101; max-width: 520px; margin: 0 auto;
+}
+.panel-overlay.show .panel { transform: translateY(0); }
+.panel-handle { width: 40px; height: 4px; background: #e2e8f0; border-radius: 2px; margin: 12px auto 0; }
+.panel-header {
+  padding: 14px 18px 12px; border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; justify-content: space-between;
+}
+.panel-title { font-size: 20px; font-weight: 900; }
+.btn-close-panel {
+  width: 30px; height: 30px; border-radius: 50%; background: var(--mist);
+  border: none; font-size: 16px; cursor: pointer; display: flex; align-items: center; justify-content: center;
+}
+.panel-body { padding: 16px 18px 36px; }
+
+.detail-label { font-size: 14px; font-weight: 700; color: var(--text2); letter-spacing: 0.06em; margin-bottom: 6px; }
+.detail-val { font-size: 18px; font-weight: 600; }
+.detail-val.mono { font-family: 'DM Mono', monospace; font-size: 13px; color: #7c3aed; }
+.detail-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 14px; }
+.detail-cell { background: var(--mist); border-radius: 10px; padding: 10px 12px; }
+.detail-section { margin-bottom: 14px; }
+
+.photo-link {
+  display: flex; align-items: center; gap: 8px; background: #f0f9ff;
+  border: 1px solid #bae6fd; border-radius: 10px; padding: 10px 14px;
+  font-size: 13px; color: #0369a1; font-weight: 600; text-decoration: none;
+}
+.divider { height: 1px; background: var(--border); margin: 16px 0; }
+
+.field-label { font-size: 17px; font-weight: 700; color: var(--text2); margin-bottom: 7px; display: block; }
+.status-btns { display: flex; gap: 8px; margin-bottom: 14px; }
+.status-btn {
+  flex: 1; padding: 12px 8px; border-radius: 10px; font-size: 16px; font-weight: 700;
+  font-family: inherit; cursor: pointer; border: 2px solid transparent; text-align: center;
+}
+.sBtn-pending { background: #fee2e2; color: #991b1b; border-color: #fca5a5; }
+.sBtn-process { background: #dbeafe; color: #1e40af; border-color: #93c5fd; }
+.sBtn-done    { background: var(--jade-pale); color: var(--jade); border-color: var(--jade); }
+.status-btn.active { transform: scale(1.03); box-shadow: 0 2px 8px rgba(0,0,0,0.12); }
+
+textarea {
+  width: 100%; padding: 12px 14px; border: 1.5px solid var(--border); border-radius: 10px;
+  font-size: 17px; font-family: inherit; resize: none; height: 110px; line-height: 1.6;
+  outline: none; color: var(--ink); background: white;
+}
+textarea:focus { border-color: var(--jade); }
+
+/* 完成照片區 */
+.complete-photo-zone { display: none; margin-bottom: 14px; }
+.complete-photo-zone.show { display: block; }
+.photo-upload-box {
+  border: 2px dashed var(--border); border-radius: 12px; padding: 20px;
+  text-align: center; cursor: pointer; background: white;
+}
+.complete-preview { margin-top: 10px; display: none; }
+.complete-preview img { width: 100%; max-height: 180px; object-fit: cover; border-radius: 10px; border: 2px solid var(--jade); }
+.retake { font-size: 13px; color: var(--jade); text-align: center; margin-top: 6px; cursor: pointer; font-weight: 600; }
+
+.btn-save {
+  width: 100%; padding: 16px; background: var(--jade); color: white;
+  border: none; border-radius: 14px; font-size: 20px; font-weight: 900;
+  font-family: inherit; cursor: pointer; margin-top: 10px;
+}
+.btn-save:disabled { background: #94a3b8; cursor: not-allowed; }
+
+.empty-state { text-align: center; padding: 48px 20px; color: var(--text2); font-size: 14px; }
+.empty-icon { font-size: 48px; margin-bottom: 12px; }
+.loading-wrap { text-align: center; padding: 40px; color: var(--text2); }
+.spinner {
+  width: 36px; height: 36px; border: 3px solid var(--border);
+  border-top-color: var(--jade); border-radius: 50%;
+  animation: spin 0.8s linear infinite; margin: 0 auto 12px;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+.toast {
+  position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%) translateY(80px);
+  background: var(--ink); color: white; padding: 12px 24px; border-radius: 24px;
+  font-size: 14px; font-weight: 600; transition: transform 0.3s; z-index: 200; white-space: nowrap;
+}
+.toast.show { transform: translateX(-50%) translateY(0); }
+
+/* ══ 統計頁籤 ══ */
+#statsPanel { display:none; padding:14px; max-width:520px; margin:0 auto; }
+#statsPanel.active { display:block; }
+.stat-filter {
+  background:white; border-radius:16px; padding:16px;
+  margin-bottom:14px; border:1.5px solid var(--border);
+}
+.stat-filter-row { display:flex; gap:10px; align-items:center; margin-bottom:12px; }
+.stat-filter label { font-size:14px; font-weight:700; color:var(--text2); white-space:nowrap; }
+.stat-select {
+  flex:1; padding:10px 12px; border:1.5px solid var(--border); border-radius:10px;
+  font-size:15px; font-family:inherit; background:white; color:var(--ink);
+}
+.stat-select:focus { outline:none; border-color:var(--jade); }
+.btn-gen {
+  width:100%; padding:14px; background:var(--jade); color:white;
+  border:none; border-radius:14px; font-size:16px; font-weight:700;
+  font-family:inherit; cursor:pointer; display:flex; align-items:center;
+  justify-content:center; gap:8px; transition:opacity 0.2s;
+}
+.btn-gen:disabled { opacity:0.6; cursor:not-allowed; }
+.stat-preview { font-size:13px; color:var(--jade); font-weight:600; margin-top:8px; text-align:center; }
+
+/* 統計卡片 */
+.stat-cards { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:14px; }
+.stat-card {
+  background:white; border-radius:14px; padding:16px 14px;
+  border:1.5px solid var(--border); text-align:center;
+}
+.stat-card-icon { font-size:24px; margin-bottom:4px; }
+.stat-card-val { font-size:28px; font-weight:900; color:var(--jade); line-height:1; margin-bottom:4px; }
+.stat-card-label { font-size:12px; color:var(--text2); font-weight:600; }
+.stat-card-sub { font-size:11px; color:#94a3b8; margin-top:3px; }
+
+/* 圖表區塊 */
+.chart-block {
+  background:white; border-radius:16px; padding:16px;
+  margin-bottom:14px; border:1.5px solid var(--border);
+}
+.chart-title { font-size:15px; font-weight:700; color:var(--ink); margin-bottom:14px; display:flex; align-items:center; gap:6px; }
+.chart-wrap { position:relative; height:220px; }
+.chart-wrap-tall { position:relative; height:280px; }
+
+/* 熱區列表 */
+.hotspot-list { list-style:none; }
+.hotspot-item {
+  display:flex; align-items:center; gap:10px;
+  padding:10px 0; border-bottom:1px solid var(--border);
+}
+.hotspot-item:last-child { border-bottom:none; }
+.hotspot-rank {
+  width:26px; height:26px; border-radius:50%; background:var(--jade-pale);
+  color:var(--jade); font-size:12px; font-weight:900;
+  display:flex; align-items:center; justify-content:center; flex-shrink:0;
+}
+.hotspot-rank.top1 { background:var(--jade); color:white; }
+.hotspot-rank.top2 { background:#2a8a5f; color:white; }
+.hotspot-rank.top3 { background:#3aaa6f; color:white; }
+.hotspot-name { flex:1; font-size:14px; font-weight:600; }
+.hotspot-bar-wrap { width:80px; height:8px; background:var(--jade-pale); border-radius:4px; overflow:hidden; }
+.hotspot-bar { height:100%; background:var(--jade); border-radius:4px; transition:width 0.6s; }
+.hotspot-count { font-size:13px; font-weight:700; color:var(--jade); min-width:30px; text-align:right; }
+
+/* 列印按鈕 */
+.btn-print {
+  width:100%; padding:14px; background:white; color:var(--jade);
+  border:2px solid var(--jade); border-radius:14px; font-size:15px;
+  font-weight:700; font-family:inherit; cursor:pointer; margin-bottom:20px;
+  display:flex; align-items:center; justify-content:center; gap:8px;
+}
+.stat-empty { text-align:center; padding:40px 20px; color:var(--text2); }
+
+/* 進度條動畫 */
+.progress-bar { height:4px; background:var(--jade-pale); border-radius:2px; margin-top:10px; overflow:hidden; display:none; }
+.progress-bar.show { display:block; }
+.progress-fill { height:100%; background:var(--jade); border-radius:2px; animation:progress 2s ease-in-out infinite; }
+@keyframes progress { 0%{width:0;margin-left:0} 50%{width:60%;margin-left:20%} 100%{width:0;margin-left:100%} }
+
+@media print {
+  .header, .tabs, .stat-filter, .btn-gen, .btn-print { display:none !important; }
+  #statsPanel { display:block !important; padding:0; }
+  .chart-block, .stat-card { break-inside:avoid; }
+}
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div class="header-left">
+    <div style="font-size:22px">🏢</div>
+    <div>
+      <div class="header-title" id="headerTitle">社區管理後台</div>
+      <div class="header-sub" id="headerSub">通報管理系統</div>
+    </div>
+  </div>
+  <button class="btn-refresh" onclick="loadReports()">🔄 重新整理</button>
+</div>
+
+<div class="tabs">
+  <button class="tab active" id="tab-pending" onclick="switchTab('pending')">
+    待處理 <span class="tab-count count-pending" id="cnt-pending">0</span>
+  </button>
+  <button class="tab" id="tab-process" onclick="switchTab('process')">
+    處理中 <span class="tab-count count-process" id="cnt-process">0</span>
+  </button>
+  <button class="tab" id="tab-done" onclick="switchTab('done')">
+    已完成 <span class="tab-count count-done" id="cnt-done">0</span>
+  </button>
+  <button class="tab" id="tab-all" onclick="switchTab('all')">
+    全部 <span class="tab-count count-all" id="cnt-all">0</span>
+  </button>
+  <button class="tab" id="tab-stats" onclick="switchTab('stats')">
+    📊 統計
+  </button>
+</div>
+
+<div class="main">
+  <div id="listWrap">
+    <div class="loading-wrap"><div class="spinner"></div>載入通報資料中...</div>
+  </div>
+</div>
+
+<div id="statsPanel">
+  <!-- 篩選區 -->
+  <div class="stat-filter">
+    <div class="stat-filter-row">
+      <label>📅 年份</label>
+      <select class="stat-select" id="statYear"></select>
+    </div>
+    <div class="stat-filter-row">
+      <label>📆 月份</label>
+      <select class="stat-select" id="statMonth">
+        <option value="0">全年統計</option>
+        <option value="1">01月</option><option value="2">02月</option>
+        <option value="3">03月</option><option value="4">04月</option>
+        <option value="5">05月</option><option value="6">06月</option>
+        <option value="7">07月</option><option value="8">08月</option>
+        <option value="9">09月</option><option value="10">10月</option>
+        <option value="11">11月</option><option value="12">12月</option>
+      </select>
+    </div>
+    <div class="progress-bar" id="statProgress"><div class="progress-fill"></div></div>
+    <button class="btn-gen" id="btnGenReport" onclick="generateReport()">
+      🚀 立即產出報告
+    </button>
+    <div class="stat-preview" id="statPreview"></div>
+  </div>
+  <!-- 結果區 -->
+  <div id="statsResult"></div>
+</div>
+
+<div class="panel-overlay" id="panelOverlay" onclick="closePanel(event)">
+  <div class="panel">
+    <div class="panel-handle"></div>
+    <div class="panel-header">
+      <div class="panel-title" id="panelTitle">通報詳情</div>
+      <button class="btn-close-panel" onclick="closePanel()">✕</button>
+    </div>
+    <div class="panel-body" id="panelBody"></div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script src="config.js"></script>
+
+<script>
+// community-admin-v1.0
+// ══════════════════════════════
+// 1. 動態設定與權限載入區
+// ══════════════════════════════
+const urlParams = new URLSearchParams(window.location.search);
+let vid = urlParams.get('vid');
+
+// 處理 LINE LIFF 的 liff.state 封裝問題
+if (!vid) {
+  const liffState = urlParams.get('liff.state');
+  if (liffState) {
+    const stateParams = new URLSearchParams(liffState.startsWith('?') ? liffState : '?' + liffState);
+    vid = stateParams.get('vid');
+  }
+}
+
+// 錯誤阻擋
+if (!vid || !SYSTEM_CONFIG[vid]) {
+  document.body.innerHTML = `
+    <div style="text-align:center; padding:50px; font-size:18px; height: 100vh; background: var(--mist);">
+      <div style="font-size:50px; margin-bottom:16px;">🛑</div>
+      <div style="font-size:22px; font-weight:900; color:var(--red); margin-bottom:12px;">無效的後台連結</div>
+      <div style="color:var(--text2);">請確認網址是否包含正確的社區代碼</div>
+    </div>`;
+  throw new Error('Invalid Admin Village ID');
+}
+
+const VILLAGE = SYSTEM_CONFIG[vid];
+
+// 動態替換畫面標題
+const comName = VILLAGE.communityName || VILLAGE.villageName;
+document.title = comName + '管理後台';
+document.getElementById('headerTitle').innerHTML = comName + '&nbsp;&nbsp;管理後台';
+document.getElementById('headerSub').textContent = VILLAGE.address || '通報管理系統';
+
+// ══════════════════════════════
+// 2. 狀態變數
+// ══════════════════════════════
+let allReports = [], currentTab = 'pending', currentReport = null;
+let selectedStatus = null, completePhotoBase64 = null;
+
+async function initLiff() {
+  try {
+    // 【動態化】使用設定檔中的後台 LIFF ID
+    await liff.init({ liffId: VILLAGE.liffIdAdmin });
+    
+    if (!liff.isLoggedIn()) {
+      liff.login();
+      return;
+    }
+
+    const profile = await liff.getProfile();
+    const userId = profile.userId;
+
+    // 【動態權限驗證】檢查登入者的 UID 是否在該里的管理員名單中
+    if (VILLAGE.adminUids.includes(userId)) {
+      loadReports(); // 權限符合，載入資料
+    } else {
+      // 權限不符，顯示阻擋畫面並顯示他的 UID (方便你後續幫里長開權限)
+      document.body.innerHTML = `
+        <div style="display:flex; flex-direction:column; align-items:center; justify-content:center; height:100vh; text-align:center; padding:20px; background:var(--mist);">
+          <div style="font-size:64px; margin-bottom:16px;">🛑</div>
+          <div style="font-size:24px; font-weight:900; color:var(--jade); margin-bottom:12px;">權限不足</div>
+          <div style="font-size:16px; color:var(--text2); line-height:1.6; margin-bottom:24px;">這是 ${VILLAGE.communityName || VILLAGE.villageName} 的專屬管理後台<br>您的帳號尚未被授權。</div>
+          <div style="font-size:11px; color:#94a3b8; margin-bottom:24px; font-family:monospace;">您的 UID: ${userId}</div>
+          <button onclick="liff.closeWindow()" style="padding:14px 32px; background:var(--jade); color:white; border:none; border-radius:12px; font-size:18px; font-weight:700;">關閉視窗</button>
+        </div>
+      `;
+    }
+  } catch(e) {
+    console.log('LIFF init error:', e);
+  }
+}
+
+async function loadReports() {
+  document.getElementById('listWrap').innerHTML =
+    '<div class="loading-wrap"><div class="spinner"></div>載入通報資料中...</div>';
+  try {
+   
+  const res  = await fetch(VILLAGE.gasUrl + '?action=getReports', {
+      method: 'GET',
+      redirect: 'follow'
+    });
+    const data = await res.json();
+    allReports = data.reports || [];
+    renderList();
+  } catch(e) {
+    console.log('loadReports error:', e);
+    document.getElementById('listWrap').innerHTML =
+      '<div class="empty-state"><div class="empty-icon">⚠️</div>載入失敗，請點重新整理</div>';
+  }
+}
+
+function switchTab(tab) {
+  currentTab = tab;
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.getElementById('tab-' + tab).classList.add('active');
+  // 統計頁籤切換
+  const statsPanel = document.getElementById('statsPanel');
+  const mainWrap   = document.querySelector('.main');
+  if (tab === 'stats') {
+    statsPanel.classList.add('active');
+    mainWrap.style.display = 'none';
+  } else {
+    statsPanel.classList.remove('active');
+    mainWrap.style.display = '';
+  }
+  renderList();
+}
+
+function renderList() {
+  const filtered = currentTab === 'all' ? allReports : allReports.filter(r => {
+    if (currentTab === 'pending') return r.status === '待處理';
+    if (currentTab === 'process') return r.status === '處理中';
+    if (currentTab === 'done')    return r.status === '已完成';
+  });
+
+  document.getElementById('cnt-pending').textContent = allReports.filter(r => r.status === '待處理').length;
+  document.getElementById('cnt-process').textContent = allReports.filter(r => r.status === '處理中').length;
+  document.getElementById('cnt-done').textContent    = allReports.filter(r => r.status === '已完成').length;
+  document.getElementById('cnt-all').textContent     = allReports.length;
+
+  if (!filtered.length) {
+    const lbl = {pending:'待處理',process:'處理中',done:'已完成',all:''};
+    document.getElementById('listWrap').innerHTML =
+      '<div class="empty-state"><div class="empty-icon">✅</div>目前沒有' + lbl[currentTab] + '的通報</div>';
+    return;
+  }
+
+  const bc = {'待處理':'badge-pending','處理中':'badge-process','已完成':'badge-done'};
+  document.getElementById('listWrap').innerHTML = '<div class="report-list">' +
+    filtered.map(r => `
+      <div class="report-card" onclick="openPanel('${r.reportId}')">
+        <div class="card-top">
+          <div class="card-row1">
+            <div class="card-title">${r.cat} — ${r.subcat}</div>
+            <span class="status-badge ${bc[r.status]||''}">${r.status}</span>
+          </div>
+          <div class="card-meta">
+            <span>📍 ${r.location}</span>
+            <span>📅 ${(r.timestamp||'').slice(0,10)}</span>
+          </div>
+          ${r.description ? '<div class="card-desc">'+r.description+'</div>' : ''}
+          <div class="card-id">${r.reportId}</div>
+        </div>
+      </div>`).join('') + '</div>';
+}
+
+function openPanel(reportId) {
+  currentReport = allReports.find(r => r.reportId === reportId);
+  if (!currentReport) return;
+  selectedStatus = currentReport.status;
+  completePhotoBase64 = null;
+
+  document.getElementById('panelTitle').textContent = currentReport.cat + ' — ' + currentReport.subcat;
+  document.getElementById('panelBody').innerHTML = buildPanelHTML(currentReport);
+  document.getElementById('panelOverlay').classList.add('show');
+  document.body.style.overflow = 'hidden';
+}
+
+function buildPanelHTML(r) {
+  return `
+    <div class="detail-grid">
+      <div class="detail-cell"><div class="detail-label">通報編號</div><div class="detail-val mono">${r.reportId}</div></div>
+      <div class="detail-cell"><div class="detail-label">通報時間</div><div class="detail-val" style="font-size:13px">${r.timestamp||''}</div></div>
+    </div>
+    <div class="detail-grid">
+      <div class="detail-cell"><div class="detail-label">類別</div><div class="detail-val">${r.cat}</div></div>
+      <div class="detail-cell"><div class="detail-label">子項目</div><div class="detail-val">${r.subcat}</div></div>
+    </div>
+    <div class="detail-section">
+      <div class="detail-label">地點</div>
+      <div class="detail-val">📍 ${r.location || '（未填寫）'}</div>
+    </div>
+    ${r.description ? `<div class="detail-section"><div class="detail-label">描述</div><div class="detail-val" style="font-weight:400;font-size:14px;line-height:1.7">${r.description}</div></div>` : ''}
+    ${(r.name||r.phone) ? `<div class="detail-grid">
+      ${r.name  ? '<div class="detail-cell"><div class="detail-label">姓名</div><div class="detail-val">'+r.name+'</div></div>' : ''}
+      ${r.phone ?
+      (() => {
+        let dPhone = r.phone.toString();
+        // 【新增】如果舊資料是 9 開頭且只有 9 碼，幫它補回 0 並加上橫槓顯示
+        if (/^9\d{8}$/.test(dPhone)) {
+          dPhone = '0' + dPhone;
+          dPhone = dPhone.replace(/(\d{4})(\d{3})(\d{3})/, '$1-$2-$3');
+        }
+        return '<div class="detail-cell"><div class="detail-label">電話</div><div class="detail-val">'+dPhone+'</div></div>';
+      })() : ''}
+    </div>` : ''}
+    <div class="detail-section">
+      <div class="detail-label"style="font-size: 16px;">住戶上傳照片</div>
+      ${r.photoUrl
+        ? `<a class="photo-link" href="${r.photoUrl}" target="_blank" style="font-size: 14px;">🖼️ 點此查看住戶照片</a>`
+        : `<div style="font-size:14px;color:#94A3B8;padding:8px 0;">📋 住戶未提供現場照片</div>`
+      }
+    </div>
+
+    <div class="divider"></div>
+
+    <span class="field-label" style="font-size: 20px;">更新狀態</span>
+    <div class="status-btns">
+      <button class="status-btn sBtn-pending ${r.status==='待處理'?'active':''}" data-status="待處理" onclick="selectStatus('待處理',this)">⏳ 待處理</button>
+      <button class="status-btn sBtn-process ${r.status==='處理中'?'active':''}" data-status="處理中" onclick="selectStatus('處理中',this)">🔧 處理中</button>
+      <button class="status-btn sBtn-done ${r.status==='已完成'?'active':''}" data-status="已完成" onclick="selectStatus('已完成',this)">✅ 已完成</button>
+    </div>
+
+    <div class="complete-photo-zone ${r.status==='已完成'?'show':''}" id="completePhotoZone">
+      <span class="field-label" style="font-size: 20px;">上傳處理完成照片（選填）</span>
+      <div class="photo-upload-box" id="uploadBox" onclick="document.getElementById('completeInput').click()">
+        <input type="file" id="completeInput" accept="image/*" capture="environment"
+          style="display:none" onchange="handleCompletePhoto(event)" />
+        <div style="font-size:28px;margin-bottom:6px">📸</div>
+        <div style="font-size:18px;font-weight:700">點此拍攝處理後照片</div>
+        <div style="font-size:13px;color:var(--text2);margin-top:4px">上傳後將連結傳送給住戶</div>
+      </div>
+      <div class="complete-preview" id="completePreview">
+        <img id="completeImg" src="" />
+        <div class="retake" onclick="retakePhoto()">🔄 重新拍攝</div>
+      </div>
+    </div>
+
+    <div class="detail-section">
+      <span class="field-label" style="font-size: 20px;">管委備註</span>
+      <textarea id="noteInput" style="font-size: 17px; height: 120px;" placeholder="輸入處理說明，例如：已通報水利局，預計週五處理...">${r.note||''}</textarea>
+    </div>
+    <button class="btn-save" id="btnSave" onclick="saveReport()">💾 儲存並通知住戶</button>
+  `;
+}
+
+function selectStatus(status, el) {
+  selectedStatus = status;
+  document.querySelectorAll('.status-btn').forEach(b => b.classList.remove('active'));
+  el.classList.add('active');
+  const zone = document.getElementById('completePhotoZone');
+  if (zone) zone.className = 'complete-photo-zone' + (status === '已完成' ? ' show' : '');
+}
+
+function handleCompletePhoto(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = ev => {
+    completePhotoBase64 = ev.target.result;
+    document.getElementById('completeImg').src = ev.target.result;
+    document.getElementById('completePreview').style.display = 'block';
+    document.getElementById('uploadBox').style.display = 'none';
+  };
+  reader.readAsDataURL(file);
+}
+
+function retakePhoto() {
+  completePhotoBase64 = null;
+  document.getElementById('completePreview').style.display = 'none';
+  document.getElementById('uploadBox').style.display = 'block';
+  document.getElementById('completeInput').value = '';
+}
+
+function closePanel(e) {
+  if (e && e.target !== document.getElementById('panelOverlay')) return;
+  document.getElementById('panelOverlay').classList.remove('show');
+  document.body.style.overflow = '';
+  currentReport = null; completePhotoBase64 = null;
+}
+
+async function saveReport() {
+  if (!currentReport) return;
+  const note = document.getElementById('noteInput').value;
+  const btn = document.getElementById('btnSave');
+  btn.textContent = '⏳ 儲存中...'; btn.disabled = true;
+
+  try {
+    const _params = new URLSearchParams();
+    _params.append('data', JSON.stringify({
+      action: 'updateStatus',
+      reportId: currentReport.reportId,
+      status: selectedStatus,
+      note: note,
+      completePhotoBase64: completePhotoBase64 || null
+    }));
+    await fetch(VILLAGE.gasUrl, {
+      method: 'POST',
+      mode: 'no-cors',
+      body: _params
+    });
+
+    const idx = allReports.findIndex(r => r.reportId === currentReport.reportId);
+    if (idx !== -1) { allReports[idx].status = selectedStatus; allReports[idx].note = note; }
+
+    showToast('✅ 已儲存，通知已發送給住戶');
+    setTimeout(() => {
+      document.getElementById('panelOverlay').classList.remove('show');
+      document.body.style.overflow = '';
+      renderList();
+    }, 1200);
+  } catch(e) {
+    showToast('⚠️ 儲存失敗，請重試');
+    btn.textContent = '💾 儲存並通知住戶'; btn.disabled = false;
+  }
+}
+
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 2500);
+}
+
+
+// ══════════════════════════════════════════
+// 統計報表模組
+// ══════════════════════════════════════════
+let chartPie = null, chartBar = null, chartTrend = null;
+
+// 初始化年份選單
+function initStatYearSelect() {
+  const sel = document.getElementById('statYear');
+  const now = new Date().getFullYear();
+  sel.innerHTML = '';
+  for (let y = now; y >= now - 3; y--) {
+    const opt = document.createElement('option');
+    opt.value = y; opt.textContent = y + '年';
+    sel.appendChild(opt);
+  }
+  // 預設月份為當月
+  document.getElementById('statMonth').value = new Date().getMonth() + 1;
+}
+
+async function generateReport() {
+  const year  = parseInt(document.getElementById('statYear').value);
+  const month = parseInt(document.getElementById('statMonth').value);
+  const btn   = document.getElementById('btnGenReport');
+  const prog  = document.getElementById('statProgress');
+  const prev  = document.getElementById('statPreview');
+
+  btn.disabled = true;
+  btn.innerHTML = '⏳ 數據分析中...';
+  prog.classList.add('show');
+  prev.textContent = '';
+  document.getElementById('statsResult').innerHTML = '';
+
+  try {
+    const url = VILLAGE.gasUrl + '?action=generateReport&year=' + year + '&month=' + month;
+    const res = await fetch(url, { method:'GET' });
+    const d   = await res.json();
+
+    prog.classList.remove('show');
+
+    if (d.status !== 'ok') {
+      document.getElementById('statsResult').innerHTML =
+        '<div class="stat-empty">⚠️ 載入失敗：' + (d.message||'請稍後再試') + '</div>';
+      return;
+    }
+    if (d.isEmpty || d.total === 0) {
+      const label = month === 0 ? year+'年' : year+'年'+month+'月';
+      document.getElementById('statsResult').innerHTML =
+        '<div class="stat-empty">📭 ' + label + ' 尚無通報資料</div>';
+      prev.textContent = '查無資料';
+      return;
+    }
+
+    const label = month === 0 ? year+'年全年' : year+'年'+String(month).padStart(2,'0')+'月';
+    prev.textContent = '✅ ' + (VILLAGE.communityName||VILLAGE.villageName) + ' ' + label + ' 共 ' + d.total + ' 筆通報';
+    renderStats(d, label);
+
+  } catch(e) {
+    prog.classList.remove('show');
+    document.getElementById('statsResult').innerHTML =
+      '<div class="stat-empty">⚠️ 網路錯誤，請重試</div>';
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '🚀 立即產出報告';
+  }
+}
+
+function renderStats(d, label) {
+  lastReportData = d; // 儲存供列印用
+  // 銷毀舊圖表
+  if (chartPie)   { chartPie.destroy();   chartPie   = null; }
+  if (chartBar)   { chartBar.destroy();   chartBar   = null; }
+  if (chartTrend) { chartTrend.destroy(); chartTrend = null; }
+
+  const prevDiff = d.prevTotal > 0
+    ? (d.total > d.prevTotal ? '▲ ' : '▼ ') +
+      Math.abs(d.total - d.prevTotal) + ' 較上月'
+    : '';
+
+  // ── 四張統計卡片 ──
+  const cardsHtml = `
+    <div class="stat-cards">
+      <div class="stat-card">
+        <div class="stat-card-icon">📋</div>
+        <div class="stat-card-val">${d.total}</div>
+        <div class="stat-card-label">總通報數</div>
+        <div class="stat-card-sub">${prevDiff}</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-card-icon">✅</div>
+        <div class="stat-card-val">${d.closeRate}%</div>
+        <div class="stat-card-label">結案率</div>
+        <div class="stat-card-sub">已完成 ${d.doneCount} 筆</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-card-icon">⏱️</div>
+        <div class="stat-card-val">${d.avgDays || '—'}</div>
+        <div class="stat-card-label">平均處理天數</div>
+        <div class="stat-card-sub">${d.doneCount > 0 ? '已完成案件' : '尚無完成案件'}</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-card-icon">⏳</div>
+        <div class="stat-card-val">${d.pendingCount}</div>
+        <div class="stat-card-label">待處理數</div>
+        <div class="stat-card-sub">處理中 ${d.processCount} 筆</div>
+      </div>
+    </div>`;
+
+  // ── 類別圓餅圖 ──
+  const pieHtml = `
+    <div class="chart-block">
+      <div class="chart-title">🥧 通報類別分佈</div>
+      <div class="chart-wrap"><canvas id="chartPie"></canvas></div>
+    </div>`;
+
+  // ── 子項目橫條圖 ──
+  const barHtml = `
+    <div class="chart-block">
+      <div class="chart-title">📊 子項目排行（前10）</div>
+      <div class="chart-wrap-tall"><canvas id="chartBar"></canvas></div>
+    </div>`;
+
+  // ── 趨勢折線圖 ──
+  const trendData = d.month === 0 ? d.monthlyTrend : d.dailyTrend;
+  const trendTitle = d.month === 0 ? '📈 每月通報趨勢' : '📈 每日通報趨勢';
+  const trendHtml = `
+    <div class="chart-block">
+      <div class="chart-title">${trendTitle}</div>
+      <div class="chart-wrap"><canvas id="chartTrend"></canvas></div>
+    </div>`;
+
+  // ── 通報熱區 ──
+  const maxCount = d.hotspots.length > 0 ? d.hotspots[0].count : 1;
+  const hotHtml = `
+    <div class="chart-block">
+      <div class="chart-title">🗺️ 通報熱區（前5）</div>
+      <ul class="hotspot-list">
+        ${d.hotspots.map((h, i) => `
+          <li class="hotspot-item">
+            <div class="hotspot-rank ${i===0?'top1':i===1?'top2':i===2?'top3':''}">${i+1}</div>
+            <div class="hotspot-name">${h.name}</div>
+            <div class="hotspot-bar-wrap">
+              <div class="hotspot-bar" style="width:${Math.round(h.count/maxCount*100)}%"></div>
+            </div>
+            <div class="hotspot-count">${h.count}筆</div>
+          </li>`).join('')}
+      </ul>
+    </div>`;
+
+  // ── 列印按鈕 ──
+  const printHtml = `
+    <button class="btn-print" onclick="openPrintView()">
+      🖨️ 列印 / 儲存為 PDF
+    </button>`;
+
+  document.getElementById('statsResult').innerHTML =
+    cardsHtml + pieHtml + barHtml + trendHtml + hotHtml + printHtml;
+
+  // ── 繪製圓餅圖 ──
+  const pieColors = ['#1a6b4a','#f59e0b','#3b82f6','#ef4444','#8b5cf6','#06b6d4'];
+  chartPie = new Chart(document.getElementById('chartPie'), {
+    type: 'doughnut',
+    data: {
+      labels: d.catData.map(c => c.name + ' (' + c.pct + '%)'),
+      datasets: [{ data: d.catData.map(c => c.count),
+        backgroundColor: pieColors.slice(0, d.catData.length),
+        borderWidth: 2, borderColor: '#fff' }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: { position:'bottom', labels:{ font:{size:13}, padding:12 } }
+      }
+    }
+  });
+
+  // ── 繪製橫條圖 ──
+  chartBar = new Chart(document.getElementById('chartBar'), {
+    type: 'bar',
+    data: {
+      labels: d.subcatData.map(s => s.name),
+      datasets: [{ data: d.subcatData.map(s => s.count),
+        backgroundColor: d.subcatData.map((_,i) => ['#1a6b4a','#f59e0b','#3b82f6','#ef4444','#8b5cf6','#06b6d4','#10b981','#f97316','#6366f1','#ec4899'][i%10]), borderRadius: 6,
+        borderSkipped: false }]
+    },
+    options: {
+      indexAxis: 'y', responsive: true, maintainAspectRatio: false,
+      plugins: { legend:{ display:false } },
+      scales: {
+        x: { grid:{ color:'#f0f0f0' }, ticks:{ font:{size:12} } },
+        y: { ticks:{ font:{size:12} } }
+      }
+    }
+  });
+
+  // ── 繪製趨勢折線圖 ──
+  chartTrend = new Chart(document.getElementById('chartTrend'), {
+    type: 'line',
+    data: {
+      labels: trendData.map(t => t.month || t.day),
+      datasets: [{
+        data: trendData.map(t => t.count),
+        borderColor: '#1a6b4a', backgroundColor: 'rgba(26,107,74,0.1)',
+        borderWidth: 2.5, pointRadius: 4, pointBackgroundColor: '#1a6b4a',
+        fill: true, tension: 0.3
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend:{ display:false } },
+      scales: {
+        x: { grid:{ display:false }, ticks:{ font:{size:11},
+          maxTicksLimit: d.month === 0 ? 12 : 15 } },
+        y: { beginAtZero:true, grid:{ color:'#f0f0f0' },
+          ticks:{ font:{size:12}, stepSize:1 } }
+      }
+    }
+  });
+}
+
+// ── 列印：傳資料到 print.html ──
+let lastReportData = null;
+
+function openPrintView() {
+  if (!lastReportData) {
+    showToast('⚠️ 請先產出報告再列印');
+    return;
+  }
+  const year  = document.getElementById('statYear').value;
+  const month = document.getElementById('statMonth').value;
+  const label = month === '0' ? year+'年全年' : year+'年'+String(month).padStart(2,'0')+'月';
+  const vname = typeof VILLAGE !== 'undefined' ? (VILLAGE.communityName || VILLAGE.villageName) : '社區';
+  const d = lastReportData;
+  const COLORS = ['#1a6b4a','#f59e0b','#3b82f6','#ef4444','#8b5cf6','#06b6d4','#10b981','#f97316','#6366f1','#ec4899'];
+  const maxH = d.hotspots.length > 0 ? d.hotspots[0].count : 1;
+  const trendData = d.month === 0 ? d.monthlyTrend : d.dailyTrend;
+  const prevDiff = d.prevTotal > 0 ? (d.total > d.prevTotal ? '▲ ' : '▼ ') + Math.abs(d.total - d.prevTotal) + ' 較上月' : '';
+
+  // 移除舊 overlay
+  const old = document.getElementById('printOverlay');
+  if (old) old.remove();
+
+  const overlay = document.createElement('div');
+  overlay.id = 'printOverlay';
+  overlay.style.cssText = 'position:fixed;inset:0;background:#f2f7f5;z-index:9999;overflow-y:auto;padding:16px;font-family:Noto Sans TC,sans-serif;';
+
+  overlay.innerHTML = `
+    <style>
+      #printOverlay .pc{background:white;border-radius:14px;padding:16px;border:1.5px solid #d4e8df;margin-bottom:12px}
+      #printOverlay .cards{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px}
+      #printOverlay .card{background:white;border-radius:14px;padding:14px;text-align:center;border:1.5px solid #d4e8df}
+      #printOverlay .cval{font-size:26px;font-weight:900;color:#1a6b4a;line-height:1}
+      #printOverlay .clbl{font-size:12px;color:#5a7068;font-weight:600;margin-top:4px}
+      #printOverlay .csub{font-size:11px;color:#94a3b8;margin-top:2px}
+      #printOverlay .ctitle{font-size:15px;font-weight:700;margin-bottom:12px;color:#0f1f1a}
+      #printOverlay .cwrap{position:relative;height:220px}
+      #printOverlay .cwtall{position:relative;height:260px}
+      #printOverlay .hl{list-style:none}
+      #printOverlay .hi{display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid #d4e8df}
+      #printOverlay .hi:last-child{border-bottom:none}
+      #printOverlay .hr{width:26px;height:26px;border-radius:50%;background:#e8f5ef;color:#1a6b4a;font-size:12px;font-weight:900;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+      #printOverlay .r1{background:#1a6b4a;color:white}
+      #printOverlay .r2{background:#2a8a5f;color:white}
+      #printOverlay .r3{background:#3aaa6f;color:white}
+      #printOverlay .hn{flex:1;font-size:14px;font-weight:600}
+      #printOverlay .hbw{width:80px;height:8px;background:#e8f5ef;border-radius:4px;overflow:hidden}
+      #printOverlay .hb{height:100%;background:#1a6b4a;border-radius:4px}
+      #printOverlay .hc{font-size:13px;font-weight:700;color:#1a6b4a;min-width:30px;text-align:right}
+      @media print{#printOverlay .no-print{display:none!important}}
+    </style>
+
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;" class="no-print">
+      <div>
+        <div style="font-size:18px;font-weight:900;color:#1a6b4a;">${vname} 通報統計</div>
+        <div style="font-size:13px;color:#5a7068;">${label}</div>
+      </div>
+      <button onclick="document.getElementById('printOverlay').remove()"
+        style="background:#e8f5ef;border:none;border-radius:50%;width:36px;height:36px;font-size:18px;cursor:pointer;color:#1a6b4a;">✕</button>
+    </div>
+
+    <div class="cards">
+      <div class="card"><div style="font-size:20px">📋</div><div class="cval">${d.total}</div><div class="clbl">總通報數</div><div class="csub">${prevDiff}</div></div>
+      <div class="card"><div style="font-size:20px">✅</div><div class="cval">${d.closeRate}%</div><div class="clbl">結案率</div><div class="csub">已完成 ${d.doneCount} 筆</div></div>
+      <div class="card"><div style="font-size:20px">⏱️</div><div class="cval">${d.avgDays||'—'}</div><div class="clbl">平均處理天數</div><div class="csub">${d.doneCount>0?'已完成案件':'尚無'}</div></div>
+      <div class="card"><div style="font-size:20px">⏳</div><div class="cval">${d.pendingCount}</div><div class="clbl">待處理</div><div class="csub">處理中 ${d.processCount} 筆</div></div>
+    </div>
+
+    <div class="pc"><div class="ctitle">🥧 通報類別分佈</div><div class="cwrap"><canvas id="po-pie"></canvas></div></div>
+    <div class="pc"><div class="ctitle">📊 子項目排行</div><div class="cwtall"><canvas id="po-bar"></canvas></div></div>
+    <div class="pc"><div class="ctitle">${d.month===0?'📈 每月趨勢':'📈 每日趨勢'}</div><div class="cwrap"><canvas id="po-trend"></canvas></div></div>
+    <div class="pc">
+      <div class="ctitle">🗺️ 通報熱區（前5）</div>
+      <ul class="hl">
+        ${d.hotspots.map((h,i)=>`<li class="hi"><div class="hr ${i===0?'r1':i===1?'r2':i===2?'r3':''}">${i+1}</div><div class="hn">${h.name}</div><div class="hbw"><div class="hb" style="width:${Math.round(h.count/maxH*100)}%"></div></div><div class="hc">${h.count}筆</div></li>`).join('')}
+      </ul>
+    </div>
+
+    <button onclick="window.print()"
+      style="width:100%;padding:16px;background:#1a6b4a;color:white;border:none;border-radius:14px;font-size:16px;font-weight:700;margin-bottom:8px;cursor:pointer;font-family:inherit;" class="no-print">
+      🖨️ 列印 / 儲存為 PDF
+    </button>
+    <button onclick="document.getElementById('printOverlay').remove()"
+      style="width:100%;padding:14px;background:white;color:#1a6b4a;border:2px solid #1a6b4a;border-radius:14px;font-size:15px;font-weight:700;cursor:pointer;font-family:inherit;margin-bottom:16px;" class="no-print">
+      ← 返回後台
+    </button>
+  `;
+
+  document.body.appendChild(overlay);
+
+  requestAnimationFrame(() => {
+    new Chart(document.getElementById('po-pie'), {
+      type:'doughnut',
+      data:{ labels:d.catData.map(c=>c.name+' ('+c.pct+'%)'), datasets:[{ data:d.catData.map(c=>c.count), backgroundColor:COLORS.slice(0,d.catData.length), borderWidth:2, borderColor:'#fff' }] },
+      options:{ responsive:true, maintainAspectRatio:false, plugins:{ legend:{ position:'bottom', labels:{ font:{size:13}, padding:12 } } } }
+    });
+    new Chart(document.getElementById('po-bar'), {
+      type:'bar',
+      data:{ labels:d.subcatData.map(s=>s.name), datasets:[{ data:d.subcatData.map(s=>s.count), backgroundColor:d.subcatData.map((_,i)=>COLORS[i%COLORS.length]), borderRadius:6, borderSkipped:false }] },
+      options:{ indexAxis:'y', responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}}, scales:{ x:{grid:{color:'#f0f0f0'},ticks:{font:{size:12}}}, y:{ticks:{font:{size:12}}} } }
+    });
+    new Chart(document.getElementById('po-trend'), {
+      type:'line',
+      data:{ labels:trendData.map(t=>t.month||t.day), datasets:[{ data:trendData.map(t=>t.count), borderColor:'#1a6b4a', backgroundColor:'rgba(26,107,74,0.1)', borderWidth:2.5, pointRadius:4, pointBackgroundColor:'#1a6b4a', fill:true, tension:0.3 }] },
+      options:{ responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}}, scales:{ x:{grid:{display:false},ticks:{font:{size:11}}}, y:{beginAtZero:true,grid:{color:'#f0f0f0'},ticks:{font:{size:12},stepSize:1}} } }
+    });
+  });
+}
+
+initLiff();
+initStatYearSelect();
+</script>
+</body>
+</html>
