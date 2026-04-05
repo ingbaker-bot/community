@@ -1,0 +1,760 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>社區通報系統</title>
+<script src="https://static.line-scdn.net/liff/edge/versions/2.22.3/sdk.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700;900&display=swap" rel="stylesheet">
+<style>
+/* ══ CSS 變數 ══ */
+:root {
+  --blue:    #1e40af;
+  --blue-l:  #3b82f6;
+  --blue-p:  #eff6ff;
+  --blue-b:  #dbeafe;
+  --ink:     #0f172a;
+  --text2:   #475569;
+  --mist:    #f1f5f9;
+  --border:  #cbd5e1;
+  --white:   #ffffff;
+  --red:     #dc2626;
+  --red-l:   #fee2e2;
+  --green:   #16a34a;
+  --green-l: #dcfce7;
+  --amber:   #d97706;
+  --amber-l: #fef3c7;
+}
+* { box-sizing:border-box; margin:0; padding:0; -webkit-tap-highlight-color:transparent; }
+body { font-family:'Noto Sans TC',sans-serif; background:var(--mist); color:var(--ink); font-size:16px; min-height:100vh; }
+
+/* ══ Header ══ */
+.header {
+  background:var(--blue); color:var(--white);
+  padding:14px 18px; position:sticky; top:0; z-index:50;
+  display:flex; align-items:center; gap:12px;
+}
+.header-icon { font-size:26px; }
+.header-title { font-size:17px; font-weight:900; letter-spacing:0.02em; }
+.header-sub   { font-size:11px; opacity:0.75; margin-top:1px; }
+
+/* ══ 步驟指示器 ══ */
+.steps {
+  background:var(--white); padding:12px 16px;
+  display:flex; align-items:center; gap:0;
+  border-bottom:1px solid var(--border);
+  position:sticky; top:64px; z-index:40;
+}
+.step-item {
+  flex:1; display:flex; flex-direction:column;
+  align-items:center; gap:3px; position:relative;
+}
+.step-item:not(:last-child)::after {
+  content:''; position:absolute; top:14px; left:50%;
+  width:100%; height:2px; background:var(--border); z-index:-1;
+}
+.step-item.done::after  { background:var(--blue); }
+.step-dot {
+  width:28px; height:28px; border-radius:50%;
+  background:var(--border); color:var(--text2);
+  font-size:12px; font-weight:700;
+  display:flex; align-items:center; justify-content:center;
+  transition:all 0.3s; position:relative; z-index:1;
+}
+.step-item.active .step-dot { background:var(--blue); color:var(--white); }
+.step-item.done   .step-dot { background:var(--blue); color:var(--white); }
+.step-item.done   .step-dot::after { content:'✓'; }
+.step-label { font-size:10px; color:var(--text2); font-weight:600; white-space:nowrap; }
+.step-item.active .step-label { color:var(--blue); }
+
+/* ══ 頁面容器 ══ */
+.main { padding:16px; max-width:480px; margin:0 auto; }
+.page { display:none; }
+.page.active { display:block; }
+
+/* ══ 共用卡片 ══ */
+.card {
+  background:var(--white); border-radius:16px;
+  border:1.5px solid var(--border); overflow:hidden;
+  margin-bottom:14px;
+}
+.card-header {
+  background:var(--blue-p); border-bottom:1px solid var(--blue-b);
+  padding:12px 16px; font-size:13px; font-weight:700;
+  color:var(--blue); display:flex; align-items:center; gap:8px;
+}
+.card-body { padding:14px 16px; }
+
+/* ══ 頁面標題 ══ */
+.page-title { font-size:22px; font-weight:900; margin-bottom:4px; }
+.page-sub   { font-size:13px; color:var(--text2); margin-bottom:18px; }
+
+/* ══ Page 1：類別選擇 ══ */
+.cat-grid {
+  display:grid; grid-template-columns:1fr 1fr; gap:10px;
+  margin-bottom:14px;
+}
+.cat-card {
+  background:var(--white); border:2px solid var(--border);
+  border-radius:16px; padding:16px 12px;
+  cursor:pointer; transition:all 0.2s;
+  display:flex; flex-direction:column; gap:10px;
+}
+.cat-card:active { transform:scale(0.97); }
+.cat-card.selected {
+  border-color:var(--blue); background:var(--blue-p);
+}
+.cat-header { display:flex; align-items:center; gap:8px; }
+.cat-icon   { font-size:30px; flex-shrink:0; }
+.cat-name   { font-size:18px; font-weight:900; line-height:1.2; }
+.cat-desc   { font-size:13px; color:var(--text2); line-height:1.5; }
+
+.subcats-wrap { margin-bottom:14px; }
+.subcats-label { font-size:13px; font-weight:700; color:var(--text2); margin-bottom:8px; }
+.chips { display:flex; flex-wrap:wrap; gap:8px; }
+.chip {
+  padding:10px 18px; border-radius:22px; font-size:16px;
+  border:1.5px solid var(--border); background:var(--white);
+  cursor:pointer; transition:all 0.2s; font-family:inherit;
+}
+.chip.selected {
+  background:var(--blue); color:var(--white); border-color:var(--blue);
+}
+
+/* ══ Page 2：地點選擇 ══ */
+.field { margin-bottom:16px; }
+.field-label {
+  font-size:15px; font-weight:700; margin-bottom:8px;
+  display:block; color:var(--ink);
+}
+.field-required { color:var(--red); margin-left:3px; }
+.select-box {
+  width:100%; padding:13px 14px; border:1.5px solid var(--border);
+  border-radius:12px; font-size:16px; font-family:inherit;
+  background:var(--white); color:var(--ink);
+  appearance:none; -webkit-appearance:none;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23475569' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat:no-repeat; background-position:right 14px center;
+}
+.select-box:focus { outline:none; border-color:var(--blue); }
+.floor-row { display:flex; gap:10px; }
+.floor-row .select-box { flex:1; }
+
+/* 位置按鈕群 */
+.location-chips { display:flex; flex-wrap:wrap; gap:8px; margin-top:8px; }
+.loc-chip {
+  padding:10px 16px; border-radius:20px; font-size:15px;
+  border:1.5px solid var(--border); background:var(--white);
+  cursor:pointer; transition:all 0.2s; font-family:inherit;
+}
+.loc-chip.selected { background:var(--blue); color:var(--white); border-color:var(--blue); }
+
+/* 地址資訊框 */
+.addr-info {
+  background:var(--blue-p); border:1.5px solid var(--blue-b);
+  border-radius:12px; padding:12px 14px; margin-top:10px;
+  font-size:13px; color:var(--blue); display:none;
+}
+.addr-info.show { display:block; }
+
+/* 自訂說明 */
+.input-text {
+  width:100%; padding:13px 14px; border:1.5px solid var(--border);
+  border-radius:12px; font-size:16px; font-family:inherit;
+  background:var(--white); resize:none;
+}
+.input-text:focus { outline:none; border-color:var(--blue); }
+
+/* ══ Page 3：照片 ══ */
+.photo-zone {
+  background:var(--mist); border:2.5px dashed var(--border);
+  border-radius:16px; padding:32px 16px; text-align:center;
+  cursor:pointer; transition:all 0.2s; position:relative; margin-bottom:12px;
+}
+.photo-zone:active { background:var(--blue-p); border-color:var(--blue); }
+.photo-zone input { position:absolute; inset:0; opacity:0; cursor:pointer; }
+.photo-icon { font-size:48px; margin-bottom:8px; }
+.photo-text { font-size:18px; font-weight:700; margin-bottom:4px; }
+.photo-hint { font-size:14px; color:var(--text2); }
+.photo-preview { margin-top:10px; display:none; }
+.photo-preview img { width:100%; max-height:220px; object-fit:cover; border-radius:12px; border:2px solid var(--blue); }
+.photo-retake { margin-top:8px; font-size:14px; color:var(--blue); text-align:center; cursor:pointer; font-weight:600; }
+
+#noPhotoZone { display:none; margin-top:12px; padding:18px; background:var(--mist); border:2px dashed var(--border); border-radius:14px; text-align:center; }
+#btnNoPhoto  { width:100%; margin-top:12px; padding:15px; background:var(--white); border:2px solid var(--border); border-radius:14px; font-size:16px; font-weight:600; color:var(--text2); cursor:pointer; font-family:inherit; }
+
+.textarea-wrap { margin-top:16px; }
+
+/* ══ Page 4：確認 ══ */
+.confirm-card { background:var(--white); border-radius:16px; border:1.5px solid var(--border); overflow:hidden; margin-bottom:14px; }
+.confirm-row { display:flex; align-items:flex-start; gap:12px; padding:13px 16px; border-bottom:1px solid var(--border); }
+.confirm-row:last-child { border-bottom:none; }
+.confirm-key { font-size:15px; color:var(--text2); min-width:52px; flex-shrink:0; }
+.confirm-val { font-size:17px; font-weight:700; flex:1; }
+.confirm-photo { width:72px; height:72px; object-fit:cover; border-radius:10px; }
+
+/* 聯絡方式 toggle */
+.contact-block { background:var(--white); border-radius:16px; border:1.5px solid var(--border); padding:16px; margin-bottom:14px; }
+.contact-toggle { display:flex; align-items:center; justify-content:space-between; cursor:pointer; }
+.contact-toggle-label { font-size:17px; font-weight:700; }
+.contact-sub { font-size:14px; color:var(--text2); margin-top:3px; }
+.toggle-sw { width:48px; height:26px; background:#cbd5e1; border-radius:13px; position:relative; transition:background 0.2s; flex-shrink:0; }
+.toggle-sw.on { background:var(--blue); }
+.toggle-knob { position:absolute; top:2px; left:2px; width:22px; height:22px; background:var(--white); border-radius:50%; transition:left 0.2s; box-shadow:0 1px 4px rgba(0,0,0,0.2); }
+.toggle-sw.on .toggle-knob { left:24px; }
+.contact-fields { margin-top:14px; display:none; }
+.contact-fields.show { display:block; }
+
+/* 無 UID 警告 */
+#noUidWarning { display:none; margin:14px 0; padding:14px 16px; background:var(--amber-l); border:1.5px solid #fcd34d; border-radius:12px; font-size:13px; color:#92400e; line-height:1.7; }
+
+/* ══ 按鈕 ══ */
+.btn-next {
+  width:100%; padding:16px; background:var(--blue); color:var(--white);
+  border:none; border-radius:14px; font-size:18px; font-weight:700;
+  font-family:inherit; cursor:pointer; display:flex; align-items:center;
+  justify-content:center; gap:8px; transition:all 0.2s;
+}
+.btn-next:disabled { background:#94a3b8; cursor:not-allowed; transform:none; }
+.btn-back {
+  width:100%; padding:14px; background:var(--white); color:var(--text2);
+  border:2px solid var(--border); border-radius:14px; font-size:16px;
+  font-weight:600; font-family:inherit; cursor:pointer; margin-bottom:10px;
+}
+
+/* ══ 成功頁 ══ */
+#page-success { text-align:center; padding:40px 20px; }
+.success-icon  { font-size:72px; margin-bottom:16px; }
+.success-title { font-size:26px; font-weight:900; margin-bottom:8px; }
+.success-sub   { font-size:15px; color:var(--text2); line-height:1.7; margin-bottom:20px; }
+.report-id     { font-size:28px; font-weight:900; color:var(--blue); letter-spacing:0.05em; margin:12px 0; }
+#successIdNote { font-size:13px; color:var(--blue); margin-top:4px; }
+.btn-close {
+  width:100%; max-width:280px; padding:16px; background:var(--blue);
+  color:var(--white); border:none; border-radius:14px; font-size:17px;
+  font-weight:700; font-family:inherit; cursor:pointer; margin-top:8px;
+}
+
+/* ══ Loading ══ */
+.loading-wrap { position:fixed; inset:0; background:rgba(255,255,255,0.92); z-index:100; display:none; align-items:center; justify-content:center; flex-direction:column; gap:16px; }
+.loading-wrap.show { display:flex; }
+.spinner { width:48px; height:48px; border:4px solid var(--border); border-top-color:var(--blue); border-radius:50%; animation:spin 0.8s linear infinite; }
+@keyframes spin { to { transform:rotate(360deg); } }
+.loading-text { font-size:15px; font-weight:600; color:var(--text2); }
+
+/* ══ 隱私提示 ══ */
+.privacy-note { background:var(--amber-l); border:1.5px solid #fcd34d; border-radius:12px; padding:12px 14px; font-size:13px; color:#92400e; margin-bottom:14px; line-height:1.6; }
+</style>
+</head>
+<body>
+
+<!-- Header -->
+<div class="header">
+  <div class="header-icon">🏢</div>
+  <div>
+    <div class="header-title" id="headerTitle">社區智慧通報</div>
+    <div class="header-sub" id="headerSub">載入中...</div>
+  </div>
+</div>
+
+<!-- 步驟指示器 -->
+<div class="steps" id="stepIndicator">
+  <div class="step-item active" id="si-1"><div class="step-dot">1</div><div class="step-label">類別</div></div>
+  <div class="step-item"        id="si-2"><div class="step-dot">2</div><div class="step-label">地點</div></div>
+  <div class="step-item"        id="si-3"><div class="step-dot">3</div><div class="step-label">照片</div></div>
+  <div class="step-item"        id="si-4"><div class="step-dot">4</div><div class="step-label">確認</div></div>
+</div>
+
+<div class="main">
+
+<!-- ══ Page 1：選擇通報類別 ══ -->
+<div class="page active" id="page-1">
+  <div style="display:flex;align-items:baseline;gap:10px;margin-bottom:20px;">
+    <div class="page-title">選擇通報類別</div>
+    <div style="font-size:13px;color:var(--text2);">請選擇最符合的項目</div>
+  </div>
+  <div class="cat-grid" id="catGrid"></div>
+  <div class="subcats-wrap" id="subcatsWrap" style="display:none;">
+    <div class="subcats-label">細項（請選一項）</div>
+    <div class="chips" id="chipsArea"></div>
+  </div>
+  <button class="btn-next" id="btn1" onclick="goTo(2)" disabled>下一步　›</button>
+</div>
+
+<!-- ══ Page 2：通報地點 ══ -->
+<div class="page" id="page-2">
+  <div class="page-title">通報地點</div>
+  <div class="page-sub">請選擇發生問題的位置</div>
+
+  <!-- 棟別選擇 -->
+  <div class="card">
+    <div class="card-header">🏗️ 棟別／區域</div>
+    <div class="card-body">
+      <div class="field">
+        <label class="field-label">選擇棟別<span class="field-required">*</span></label>
+        <select class="select-box" id="buildingSelect" onchange="onBuildingChange()">
+          <option value="">請選擇棟別／區域...</option>
+        </select>
+      </div>
+      <!-- 地址提示 -->
+      <div class="addr-info" id="buildingAddr"></div>
+      <!-- 位置細項 -->
+      <div class="field" id="locationWrap" style="display:none;">
+        <label class="field-label">位置細項<span class="field-required">*</span></label>
+        <div class="location-chips" id="locationChips"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 樓層（選填） -->
+  <div class="card" id="floorCard" style="display:none;">
+    <div class="card-header">🔢 樓層（選填）</div>
+    <div class="card-body">
+      <div class="floor-row">
+        <select class="select-box" id="floorSelect">
+          <option value="">樓層（選填）</option>
+        </select>
+      </div>
+    </div>
+  </div>
+
+  <!-- 補充說明地點 -->
+  <div class="card">
+    <div class="card-header">📝 補充說明位置（選填）</div>
+    <div class="card-body">
+      <textarea class="input-text" id="locationNote" rows="2"
+        placeholder="例：A棟3F電梯門口旁、B1停車場入口左側..."></textarea>
+    </div>
+  </div>
+
+  <button class="btn-back" onclick="goTo(1)">← 返回</button>
+  <button class="btn-next" id="btn2" onclick="goTo(3)" disabled>下一步　›</button>
+</div>
+
+<!-- ══ Page 3：上傳照片 ══ -->
+<div class="page" id="page-3">
+  <div class="page-title" style="font-size:26px;">上傳現場照片</div>
+  <div class="page-sub" style="font-size:15px;">請拍攝現場照片，方便管委會判斷處理方式</div>
+
+  <div class="privacy-note">🔒 照片<strong>僅用於處理本次通報</strong>，不會用於其他用途。</div>
+
+  <div class="photo-zone" id="photoZone" onclick="document.getElementById('photoInput').click()">
+    <input type="file" accept="image/*" capture="environment" id="photoInput"
+      onchange="handlePhoto(event)" style="display:none" />
+    <div class="photo-icon">📸</div>
+    <div class="photo-text">點此拍照或選擇圖片</div>
+    <div class="photo-hint">請上傳 1 張清晰的現場照片</div>
+  </div>
+
+  <div class="photo-preview" id="photoPreview">
+    <img id="photoImg" src="" alt="預覽" />
+    <div class="photo-retake" onclick="retakePhoto()">🔄 重新拍攝</div>
+  </div>
+
+  <!-- 無照片選項 -->
+  <div id="noPhotoZone">
+    <div style="font-size:28px;margin-bottom:6px;">🚫</div>
+    <div style="font-size:16px;font-weight:700;color:var(--text2);">未提供現場照片</div>
+    <div style="font-size:13px;color:#94a3b8;margin-top:4px;cursor:pointer;" onclick="cancelNoPhoto()">← 取消，我要拍照</div>
+  </div>
+  <button id="btnNoPhoto" onclick="setNoPhoto()">📋 此次通報無現場照片</button>
+
+  <!-- 補充說明 -->
+  <div class="textarea-wrap">
+    <div class="field-label" style="font-size:17px;">補充說明（選填）</div>
+    <textarea class="input-text" id="description" rows="3"
+      placeholder="例：電梯門關不上已持續兩天，請儘速處理..."></textarea>
+  </div>
+
+  <button class="btn-back" onclick="goTo(2)" style="margin-top:16px;">← 返回</button>
+  <button class="btn-next" id="btn3" onclick="goTo(4)" disabled>下一步　›</button>
+</div>
+
+<!-- ══ Page 4：確認送出 ══ -->
+<div class="page" id="page-4">
+  <div class="page-title">確認通報內容</div>
+  <div class="page-sub">請確認後送出，管委會將儘速處理</div>
+
+  <div class="confirm-card" id="confirmCard"></div>
+
+  <!-- 聯絡方式 -->
+  <div class="contact-block">
+    <div class="contact-toggle" onclick="toggleContact()">
+      <div>
+        <div class="contact-toggle-label">留下聯絡方式（選填）</div>
+        <div class="contact-sub">方便管委會回覆或確認細節</div>
+      </div>
+      <div class="toggle-sw" id="toggleSw"><div class="toggle-knob"></div></div>
+    </div>
+    <div class="contact-fields" id="contactFields">
+      <input type="text" class="input-text" id="contactName" placeholder="您的姓名" style="margin-bottom:10px;margin-top:14px;">
+      <input type="tel" class="input-text" id="contactPhone" placeholder="聯絡電話">
+    </div>
+  </div>
+
+  <!-- 無 UID 警告 -->
+  <div id="noUidWarning">
+    ⚠️ <strong>系統無法識別您的 Line 帳號</strong><br>
+    您將<strong>無法收到</strong>處理進度的 Line 通知。<br>
+    建議從官方帳號的圖文選單開啟通報表單。
+  </div>
+
+  <button class="btn-back" onclick="goTo(3)">← 返回</button>
+  <button class="btn-next" onclick="submitReport()">📤 送出通報</button>
+</div>
+
+<!-- ══ 成功頁 ══ -->
+<div class="page" id="page-success">
+  <div class="success-icon">✅</div>
+  <div class="success-title">通報成功！</div>
+  <div class="success-sub">您的通報已送出<br>管委會將儘速處理並回覆您</div>
+  <div>通報編號</div>
+  <div class="report-id" id="successId">CID-2026-04-001</div>
+  <div id="successIdNote" style="display:none;">✅ 正確通報編號請查看 Line 訊息</div>
+  <div class="success-sub" style="font-size:13px;">請截圖保存編號，以便日後查詢進度</div>
+  <div id="noUidWarning2" style="display:none;margin:14px 0;padding:14px;background:var(--amber-l);border:1.5px solid #fcd34d;border-radius:12px;font-size:13px;color:#92400e;line-height:1.7;">
+    ⚠️ <strong>注意：系統無法識別您的 Line 帳號</strong><br>
+    您將<strong>無法收到</strong>處理進度的 Line 通知。
+  </div>
+  <button class="btn-close" onclick="closeLiff()">關閉</button>
+</div>
+
+</div><!-- /main -->
+
+<!-- Loading -->
+<div class="loading-wrap" id="loading">
+  <div class="spinner"></div>
+  <div class="loading-text" id="loadingText">處理中...</div>
+</div>
+
+<!-- config.js -->
+<script src="config.js"></script>
+
+<script>
+// ══ 版本 community-index-v1.0 ══
+
+// ── 1. 從 URL 取得 vid ──
+const urlParams = new URLSearchParams(window.location.search);
+let vid = urlParams.get('vid');
+if (!vid) {
+  const liffState = urlParams.get('liff.state') || '';
+  const sp = new URLSearchParams(liffState.startsWith('?') ? liffState : '?' + liffState);
+  vid = sp.get('vid');
+}
+if (!vid || !SYSTEM_CONFIG[vid]) {
+  document.body.innerHTML = `
+    <div style="padding:40px 20px;text-align:center;color:#dc2626;">
+      <div style="font-size:48px;margin-bottom:16px;">⚠️</div>
+      <div style="font-size:18px;font-weight:700;">無效的社區連結</div>
+      <div style="font-size:13px;color:#64748b;margin-top:8px;">請從官方帳號的圖文選單開啟</div>
+    </div>`;
+  throw new Error('Invalid vid');
+}
+
+const COM = SYSTEM_CONFIG[vid];
+document.title = COM.communityName + '　通報系統';
+
+// 動態更新 header
+document.querySelector('.header-icon').textContent = COM.icon || '🏢';
+document.getElementById('headerTitle').textContent = COM.communityName + '　智慧通報';
+document.getElementById('headerSub').textContent   = COM.address || '';
+
+// ── 2. 狀態 ──
+const state = {
+  userId: 'unknown',
+  cat: '', subcat: '',
+  building: '', buildingName: '',
+  locationDetail: '', floor: '',
+  locationNote: '',
+  photoFile: null, photoBase64: null, noPhoto: false,
+  contactName: '', contactPhone: '',
+};
+
+// ── 3. 建立類別卡片 ──
+function buildCatGrid() {
+  const grid = document.getElementById('catGrid');
+  grid.innerHTML = '';
+  COM.categories.forEach(cat => {
+    const card = document.createElement('div');
+    card.className = 'cat-card';
+    card.innerHTML = `
+      <div class="cat-header">
+        <span class="cat-icon">${cat.icon}</span>
+        <div class="cat-name">${cat.name}</div>
+      </div>
+      <div class="cat-desc">${cat.desc}</div>`;
+    card.onclick = () => selectCat(card, cat.key, cat.name, cat.subs);
+    grid.appendChild(card);
+  });
+}
+
+function selectCat(el, key, name, subs) {
+  document.querySelectorAll('.cat-card').forEach(c => c.classList.remove('selected'));
+  el.classList.add('selected');
+  state.cat = name; state.subcat = '';
+  document.getElementById('btn1').disabled = true;
+
+  // 顯示子項目
+  const wrap  = document.getElementById('subcatsWrap');
+  const chips = document.getElementById('chipsArea');
+  chips.innerHTML = '';
+  subs.forEach(sub => {
+    const btn = document.createElement('button');
+    btn.className = 'chip'; btn.textContent = sub;
+    btn.onclick = () => {
+      document.querySelectorAll('.chip').forEach(c => c.classList.remove('selected'));
+      btn.classList.add('selected');
+      state.subcat = sub;
+      document.getElementById('btn1').disabled = false;
+    };
+    chips.appendChild(btn);
+  });
+  wrap.style.display = 'block';
+}
+
+// ── 4. 建立棟別選單 ──
+function buildBuildingSelect() {
+  const sel = document.getElementById('buildingSelect');
+  COM.buildings.forEach(b => {
+    const opt = document.createElement('option');
+    opt.value = b.id; opt.textContent = b.name;
+    sel.appendChild(opt);
+  });
+}
+
+function onBuildingChange() {
+  const sel = document.getElementById('buildingSelect');
+  const bid = sel.value;
+  if (!bid) {
+    document.getElementById('buildingAddr').classList.remove('show');
+    document.getElementById('locationWrap').style.display = 'none';
+    document.getElementById('floorCard').style.display    = 'none';
+    document.getElementById('btn2').disabled = true;
+    return;
+  }
+
+  const bld = COM.buildings.find(b => b.id === bid);
+  state.building     = bid;
+  state.buildingName = bld.name;
+  state.locationDetail = '';
+  state.floor = '';
+
+  // 顯示地址
+  const addrEl = document.getElementById('buildingAddr');
+  if (bld.address) {
+    addrEl.textContent = '📍 ' + bld.address;
+    addrEl.classList.add('show');
+  } else {
+    addrEl.classList.remove('show');
+  }
+
+  // 位置細項
+  const locWrap  = document.getElementById('locationWrap');
+  const locChips = document.getElementById('locationChips');
+  locChips.innerHTML = '';
+  if (bld.locations && bld.locations.length > 0) {
+    bld.locations.forEach(loc => {
+      const btn = document.createElement('button');
+      btn.className = 'loc-chip'; btn.textContent = loc;
+      btn.onclick = () => {
+        document.querySelectorAll('.loc-chip').forEach(c => c.classList.remove('selected'));
+        btn.classList.add('selected');
+        state.locationDetail = loc;
+        document.getElementById('btn2').disabled = false;
+      };
+      locChips.appendChild(btn);
+    });
+    locWrap.style.display = 'block';
+  } else {
+    locWrap.style.display = 'none';
+    document.getElementById('btn2').disabled = false;
+  }
+
+  // 樓層選單（只有有樓層的棟別顯示）
+  const floorCard = document.getElementById('floorCard');
+  const floorSel  = document.getElementById('floorSelect');
+  if (bld.floors) {
+    floorSel.innerHTML = '<option value="">樓層（選填）</option>';
+    for (let f = bld.floors.max; f >= bld.floors.min; f--) {
+      const opt = document.createElement('option');
+      opt.value = f; opt.textContent = f + 'F';
+      floorSel.appendChild(opt);
+    }
+    // B1、B2
+    if (bld.floors.basement) {
+      for (let b = 1; b <= bld.floors.basement; b++) {
+        const opt = document.createElement('option');
+        opt.value = 'B'+b; opt.textContent = 'B'+b;
+        floorSel.appendChild(opt);
+      }
+    }
+    floorCard.style.display = 'block';
+  } else {
+    floorCard.style.display = 'none';
+  }
+}
+
+// ── 5. 照片 ──
+function handlePhoto(e) {
+  state.noPhoto = false;
+  document.getElementById('noPhotoZone').style.display = 'none';
+  document.getElementById('btnNoPhoto').style.display  = 'block';
+  const file = e.target.files[0];
+  if (!file) return;
+  state.photoFile = file;
+  const reader = new FileReader();
+  reader.onload = ev => {
+    state.photoBase64 = ev.target.result;
+    document.getElementById('photoImg').src = ev.target.result;
+    document.getElementById('photoPreview').style.display = 'block';
+    document.getElementById('photoZone').style.display    = 'none';
+    document.getElementById('btn3').disabled = false;
+  };
+  reader.readAsDataURL(file);
+}
+function retakePhoto() {
+  state.photoFile = null; state.photoBase64 = null;
+  document.getElementById('photoPreview').style.display = 'none';
+  document.getElementById('photoZone').style.display    = 'block';
+  document.getElementById('photoInput').value = '';
+  document.getElementById('btn3').disabled = true;
+}
+function setNoPhoto() {
+  state.noPhoto = true; state.photoFile = null; state.photoBase64 = null;
+  document.getElementById('photoZone').style.display    = 'none';
+  document.getElementById('photoPreview').style.display = 'none';
+  document.getElementById('btnNoPhoto').style.display   = 'none';
+  document.getElementById('noPhotoZone').style.display  = 'block';
+  document.getElementById('btn3').disabled = false;
+}
+function cancelNoPhoto() {
+  state.noPhoto = false;
+  document.getElementById('noPhotoZone').style.display  = 'none';
+  document.getElementById('photoZone').style.display    = 'block';
+  document.getElementById('btnNoPhoto').style.display   = 'block';
+  document.getElementById('btn3').disabled = true;
+}
+
+// ── 6. 頁面切換 ──
+function goTo(n) {
+  // 更新 state（地點頁）
+  if (n === 4) {
+    state.locationNote = document.getElementById('locationNote').value;
+    state.floor        = document.getElementById('floorSelect')?.value || '';
+    buildConfirm();
+  }
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.getElementById('page-' + n).classList.add('active');
+
+  // 更新步驟指示器
+  for (let i = 1; i <= 4; i++) {
+    const el = document.getElementById('si-' + i);
+    el.classList.remove('active','done');
+    if (i < n)      el.classList.add('done');
+    else if (i===n) el.classList.add('active');
+  }
+  window.scrollTo(0, 0);
+}
+
+// ── 7. 確認頁 ──
+function buildConfirm() {
+  // 組合地點文字
+  let loc = state.buildingName;
+  if (state.floor)          loc += ' ' + state.floor + 'F';
+  if (state.locationDetail) loc += '　' + state.locationDetail;
+  if (state.locationNote)   loc += '（' + state.locationNote + '）';
+  state.fullLocation = loc;
+
+  const rows = [
+    ['類別', state.cat],
+    ['細項', state.subcat],
+    ['地點', loc],
+    ['說明', document.getElementById('description').value || '（無）'],
+    ['照片', state.photoBase64
+      ? `<img class="confirm-photo" src="${state.photoBase64}" />`
+      : '<span style="color:var(--text2);font-size:14px;">未提供照片</span>'],
+  ];
+  document.getElementById('confirmCard').innerHTML = rows.map(([k,v]) => `
+    <div class="confirm-row">
+      <div class="confirm-key">${k}</div>
+      <div class="confirm-val">${v}</div>
+    </div>`).join('');
+}
+
+// ── 8. 聯絡方式 toggle ──
+let contactOn = false;
+function toggleContact() {
+  contactOn = !contactOn;
+  document.getElementById('toggleSw').classList.toggle('on', contactOn);
+  document.getElementById('contactFields').classList.toggle('show', contactOn);
+}
+
+// ── 9. 送出通報 ──
+async function submitReport() {
+  showLoading('送出中...');
+  const reportId = COM.reportPrefix + '-'
+    + new Date().getFullYear() + '-'
+    + String(new Date().getMonth()+1).padStart(2,'0') + '-'
+    + String(Math.floor(Math.random()*9000)+1000);
+
+  const payload = {
+    reportId,
+    userId:          state.userId,
+    cat:             state.cat,
+    subcat:          state.subcat,
+    location:        state.fullLocation,
+    locationSource:  'manual',
+    description:     document.getElementById('description').value,
+    photoBase64:     state.photoBase64 || null,
+    name:            contactOn ? document.getElementById('contactName').value  : '',
+    phone:           contactOn ? document.getElementById('contactPhone').value : '',
+  };
+
+  try {
+    const params = new URLSearchParams();
+    params.append('data', JSON.stringify(payload));
+    await fetch(COM.gasUrl, { method:'POST', mode:'no-cors', body:params });
+  } catch(e) { console.log('GAS error:', e); }
+
+  hideLoading();
+  document.getElementById('successId').textContent = '請查看 Line 訊息確認通報編號';
+  document.getElementById('successIdNote').style.display = 'block';
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.getElementById('page-success').classList.add('active');
+  document.getElementById('stepIndicator').style.display = 'none';
+  if (!state.userId || state.userId === 'unknown') {
+    document.getElementById('noUidWarning2').style.display = 'block';
+  }
+  window.scrollTo(0, 0);
+}
+
+function closeLiff() {
+  try { liff.closeWindow(); } catch(e) { window.close(); }
+}
+function showLoading(t) {
+  document.getElementById('loadingText').textContent = t||'處理中...';
+  document.getElementById('loading').classList.add('show');
+}
+function hideLoading() {
+  document.getElementById('loading').classList.remove('show');
+}
+
+// ── 10. LIFF 初始化 ──
+async function initLiff() {
+  try {
+    await liff.init({ liffId: COM.liffIdIndex });
+    if (liff.isLoggedIn()) {
+      const profile = await liff.getProfile();
+      state.userId  = profile.userId;
+    } else {
+      liff.login();
+    }
+  } catch(e) { console.log('LIFF init error:', e); }
+  buildCatGrid();
+  buildBuildingSelect();
+}
+
+initLiff();
+</script>
+</body>
+</html>
