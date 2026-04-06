@@ -84,7 +84,7 @@ const SYSTEM_CONFIG = {
     liffIdIndex:  '2009701021-MFe8Bz5O',
     liffIdAdmin:  '2009701021-997sFbXK',
     gasUrl:       'https://script.google.com/macros/s/AKfycbwrA2VCRvOAvGHtjaTbc0QOhE7lxB_E4ZthKih3DOPUbsuWHmjnyv4M-rCNo2WvMsS4/exec',
-    adminUids:    ['U56dab987a29938f8e4a5c07e025bffe5'],
+    adminUids:    ['U29898afb606f8c0671275c061f817adc'],
   },
 
   // ── 未來新增社區只複製上面區塊，改 key 和設定即可 ──
